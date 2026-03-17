@@ -52,6 +52,35 @@ func main() {
 }
 ```
 
+### 2.1 map[string]any 数据导出
+
+当数据源是 `[]map[string]any` 时，可以将泛型参数设为 `map[string]any`，并通过手动定义列来保证列顺序：
+
+```go
+func main() {
+    rows := []map[string]any{
+        {"id": 1, "name": "Alice", "age": 18},
+        {"id": 2, "name": "Bob", "age": 20},
+    }
+
+    err := excelkit.New[map[string]any]().
+        FromSlice(rows).
+        UseStream().
+        Sheet("Sheet1").
+            Column("ID").Value(func(m map[string]any) any { return m["id"] }).End().
+            Column("姓名").Value(func(m map[string]any) any { return m["name"] }).End().
+            Column("年龄").Value(func(m map[string]any) any { return m["age"] }).End().
+        EndSheet().
+        Save("map.xlsx")
+
+    if err != nil {
+        panic(err)
+    }
+}
+```
+
+注意：`AutoSheet(...)` 目前仅支持结构体（通过反射读取字段），不适用于 `map[string]any`。
+
 ### 3. 高级用法（自定义列与拦截器）
 
 以下示例展示了如何：
