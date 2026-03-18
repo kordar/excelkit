@@ -222,7 +222,7 @@ func TestDownload(t *testing.T) {
 	if err := b.Download(rec, "test.xlsx"); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Header().Get("Content-Disposition") != "attachment; filename=test.xlsx" {
+	if rec.Header().Get("Content-Disposition") != "attachment; filename=\"test.xlsx\"; filename*=UTF-8''test.xlsx" {
 		t.Errorf("Unexpected Content-Disposition: %s", rec.Header().Get("Content-Disposition"))
 	}
 	if rec.Body.Len() == 0 {
@@ -239,13 +239,92 @@ func TestDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if rec2.Header().Get("Content-Disposition") != "attachment; filename=test_custom.xlsx" {
+	if rec2.Header().Get("Content-Disposition") != "attachment; filename=\"test_custom.xlsx\"; filename*=UTF-8''test_custom.xlsx" {
 		t.Errorf("Unexpected Content-Disposition: %s", rec2.Header().Get("Content-Disposition"))
 	}
 	if rec2.Header().Get("X-Custom-Header") != "ExcelKit-Test" {
 		t.Errorf("Custom header missing")
 	}
-	if rec2.Header().Get("Content-Type") != "application/vnd.ms-excel" {
-		t.Errorf("Content-Type not overridden: got %s", rec2.Header().Get("Content-Type"))
+	if rec2.Header().Get("Content-Type") != "application/octet-stream" {
+		t.Errorf("Unexpected Content-Type: got %s", rec2.Header().Get("Content-Type"))
+	}
+}
+
+func TestCustomSheetNameNoDefaultSheet1(t *testing.T) {
+	rows := []User{{ID: 1, Name: "A"}}
+
+	buf := &bytes.Buffer{}
+	if err := New[User]().
+		FromSlice(rows).
+		UseStream().
+		AutoSheet("json", "用户表").
+		EndSheet().
+		Write(buf); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := excelize.OpenReader(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	for _, name := range f.GetSheetList() {
+		if name == "Sheet1" {
+			t.Fatalf("unexpected default sheet: %s", name)
+		}
+	}
+}
+
+func TestHeaderAndDefaultStyle(t *testing.T) {
+	rows := []User{{ID: 1, Name: "A"}}
+
+	buf := &bytes.Buffer{}
+	b := New[User]().FromSlice(rows).UseStream()
+	b.Sheet("S").
+		HeaderStyle(BorderedHeaderStyle()).
+		SheetDefaultStyle(BorderedStyle()).
+		Column("ID").Value(func(u User) any { return u.ID }).End().
+		Column("姓名").Value(func(u User) any { return u.Name }).Style(func(u User) *Style { return GreenStyle() }).End().
+		EndSheet()
+
+	if err := b.Write(buf); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := excelize.OpenReader(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	hA1, err := f.GetCellStyle("S", "A1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hB1, err := f.GetCellStyle("S", "B1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dA2, err := f.GetCellStyle("S", "A2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dB2, err := f.GetCellStyle("S", "B2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if hA1 == 0 || hA1 != hB1 {
+		t.Fatalf("unexpected header style ids: A1=%d B1=%d", hA1, hB1)
+	}
+	if dA2 == 0 {
+		t.Fatalf("unexpected default style id: A2=%d", dA2)
+	}
+	if dA2 == hA1 {
+		t.Fatalf("expected data style differs from header style: data=%d header=%d", dA2, hA1)
+	}
+	if dB2 == dA2 {
+		t.Fatalf("expected column override style differs from default: A2=%d B2=%d", dA2, dB2)
 	}
 }

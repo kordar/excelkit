@@ -4,15 +4,27 @@ package excelkit
 // SheetBuilder / ColumnBuilder
 // --------------------
 type SheetBuilder[T any] struct {
-	parent  *ExportBuilder[T]
-	name    string
-	columns []*ColumnBuilder[T]
+	parent       *ExportBuilder[T]
+	name         string
+	columns      []*ColumnBuilder[T]
+	headerStyle  *Style
+	defaultStyle *Style
 }
 
 func (s *SheetBuilder[T]) Column(header string) *ColumnBuilder[T] {
 	c := &ColumnBuilder[T]{parent: s, header: header}
 	s.columns = append(s.columns, c)
 	return c
+}
+
+func (s *SheetBuilder[T]) HeaderStyle(style *Style) *SheetBuilder[T] {
+	s.headerStyle = style
+	return s
+}
+
+func (s *SheetBuilder[T]) SheetDefaultStyle(style *Style) *SheetBuilder[T] {
+	s.defaultStyle = style
+	return s
 }
 
 func (s *SheetBuilder[T]) EndSheet() *ExportBuilder[T] { return s.parent }
@@ -28,7 +40,12 @@ func (s *SheetBuilder[T]) ToSchema() SheetSchema[T] {
 			Render: c.render,
 		})
 	}
-	return SheetSchema[T]{Name: s.name, Columns: cols}
+	return SheetSchema[T]{
+		Name:         s.name,
+		Columns:      cols,
+		HeaderStyle:  s.headerStyle,
+		DefaultStyle: s.defaultStyle,
+	}
 }
 
 type ColumnBuilder[T any] struct {

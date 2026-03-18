@@ -81,6 +81,27 @@ func main() {
 
 注意：`AutoSheet(...)` 目前仅支持结构体（通过反射读取字段），不适用于 `map[string]any`。
 
+### 2.2 excelutil（map + struct tag 快速建表）
+
+仓库内提供了 `excelutil` 包，用来用“结构体 tag 描述列 + []map 数据源”的方式快速导出：
+
+```go
+type UserVO struct {
+    ID   int64  `json:"id" excel:"ID"`
+    Name string `json:"name" excel:"姓名"`
+}
+
+func DownloadHandler(w http.ResponseWriter, r *http.Request) {
+    rows := []map[string]any{
+        {"id": 1, "name": "Alice"},
+        {"id": 2, "name": "Bob"},
+    }
+    _ = excelutil.OutputMapDataForStruct[UserVO](rows, "用户表", "users.xlsx", w)
+}
+```
+
+`OutputMapDataForStruct` 默认使用 `TableHeaderBlueStyle` + `TableBodyBlueStyle`，也可以用 `OutputMapDataForStructWithStyles` 自定义 header/body 风格。
+
 ### 3. 高级用法（自定义列与拦截器）
 
 以下示例展示了如何：
@@ -145,6 +166,24 @@ func main() {
         panic(err)
     }
 }
+```
+
+#### 初始样式（HeaderStyle / SheetDefaultStyle）
+
+可以为表头行设置统一样式，并为整张表的数据单元格设置默认样式（会被列样式或合并区域样式覆盖）：
+
+```go
+err := excelkit.New[User]().
+    FromSlice(users).
+    UseStream().
+    Sheet("用户表").
+        HeaderStyle(excelkit.BorderedHeaderStyle()).
+        SheetDefaultStyle(excelkit.BorderedStyle()).
+        Column("ID").Value(func(u User) any { return u.ID }).End().
+        Column("姓名").Value(func(u User) any { return u.Name }).
+            Style(func(u User) *excelkit.Style { return excelkit.GreenStyle() }).End().
+    EndSheet().
+    Save("users_with_styles.xlsx")
 ```
 
 #### 连续小结（两行，列合并）
@@ -232,6 +271,8 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 - `UseStream()`: 启用流式写入模式（推荐用于大数据导出）。
 - `Sheet(name)`: 开始定义一个 Sheet。
 - `AutoSheet(tag, name)`: 根据 Struct Tag 自动生成 Sheet。
+- `HeaderStyle(*Style)`: 设置表头样式（作用于第 1 行）。
+- `SheetDefaultStyle(*Style)`: 设置整张表数据默认样式（会被列样式/合并区域样式覆盖）。
 - `Column(header)`: 定义一列。
     - `.Value(fn)`: 定义该列取值逻辑。
     - `.Width(w)`: 定义列宽。

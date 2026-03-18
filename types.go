@@ -25,8 +25,10 @@ type Column[T any] struct {
 }
 
 type SheetSchema[T any] struct {
-	Name    string
-	Columns []Column[T]
+	Name         string
+	Columns      []Column[T]
+	HeaderStyle  *Style
+	DefaultStyle *Style
 }
 
 // --------------------

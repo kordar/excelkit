@@ -6,12 +6,14 @@ import "github.com/xuri/excelize/v2"
 // ExcelWriter
 // --------------------
 type ExcelWriter[T any] struct {
-	File         *excelize.File
-	Schema       SheetSchema[T]
-	Source       DataSource[T]
-	UseStream    bool
-	Interceptors []RowInterceptor[T]
-	sw           *excelize.StreamWriter
+	File           *excelize.File
+	Schema         SheetSchema[T]
+	Source         DataSource[T]
+	UseStream      bool
+	Interceptors   []RowInterceptor[T]
+	sw             *excelize.StreamWriter
+	headerStyleID  int
+	defaultStyleID int
 }
 
 func (w *ExcelWriter[T]) Write() error {
@@ -19,19 +21,42 @@ func (w *ExcelWriter[T]) Write() error {
 	sheet := w.Schema.Name
 	var err error
 	if w.UseStream {
-		_, _ = f.NewSheet(sheet)
+		if idx, e := f.GetSheetIndex(sheet); e != nil || idx == -1 {
+			_, _ = f.NewSheet(sheet)
+		}
 		w.sw, err = f.NewStreamWriter(sheet)
 		if err != nil {
 			return err
 		}
 	} else {
-		f.NewSheet(sheet)
+		if idx, e := f.GetSheetIndex(sheet); e != nil || idx == -1 {
+			f.NewSheet(sheet)
+		}
+	}
+
+	if w.Schema.HeaderStyle != nil {
+		sid, err := w.Schema.HeaderStyle.Build(f)
+		if err != nil {
+			return err
+		}
+		w.headerStyleID = sid
+	}
+	if w.Schema.DefaultStyle != nil {
+		sid, err := w.Schema.DefaultStyle.Build(f)
+		if err != nil {
+			return err
+		}
+		w.defaultStyleID = sid
 	}
 
 	// 写 header
 	header := make([]interface{}, len(w.Schema.Columns))
 	for i, col := range w.Schema.Columns {
-		header[i] = col.Header
+		if w.headerStyleID > 0 {
+			header[i] = excelize.Cell{Value: col.Header, StyleID: w.headerStyleID}
+		} else {
+			header[i] = col.Header
+		}
 	}
 	if w.UseStream {
 		_ = w.sw.SetRow("A1", header)
@@ -39,6 +64,9 @@ func (w *ExcelWriter[T]) Write() error {
 		for i, val := range header {
 			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 			f.SetCellValue(sheet, cell, val)
+			if w.headerStyleID > 0 {
+				f.SetCellStyle(sheet, cell, cell, w.headerStyleID)
+			}
 		}
 	}
 
@@ -143,6 +171,10 @@ func (w *ExcelWriter[T]) writeRow(row T, rowIdx int, styleOverrides map[int]int)
 
 		styleID := 0
 		hasStyle := false
+		if w.defaultStyleID > 0 {
+			styleID = w.defaultStyleID
+			hasStyle = true
+		}
 		if col.Style != nil {
 			style := col.Style(row)
 			if style != nil {

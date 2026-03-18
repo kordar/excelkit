@@ -3,6 +3,7 @@ package excelkit
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"reflect"
 
 	"github.com/xuri/excelize/v2"
@@ -67,6 +68,19 @@ func (b *ExportBuilder[T]) AddInterceptor(fn RowInterceptor[T]) *ExportBuilder[T
 }
 
 func (b *ExportBuilder[T]) build() error {
+	if len(b.sheets) == 0 {
+		return nil
+	}
+
+	firstSheetName := b.sheets[0].name
+	if firstSheetName != "" && firstSheetName != "Sheet1" {
+		sheet1Idx, sheet1Err := b.File.GetSheetIndex("Sheet1")
+		firstIdx, firstErr := b.File.GetSheetIndex(firstSheetName)
+		if sheet1Err == nil && sheet1Idx != -1 && (firstErr != nil || firstIdx == -1) {
+			_ = b.File.SetSheetName("Sheet1", firstSheetName)
+		}
+	}
+
 	for _, sheet := range b.sheets {
 		writer := ExcelWriter[T]{
 			File:         b.File,
@@ -77,6 +91,12 @@ func (b *ExportBuilder[T]) build() error {
 		}
 		if err := writer.Write(); err != nil {
 			return err
+		}
+	}
+
+	if firstSheetName != "" {
+		if idx, err := b.File.GetSheetIndex(firstSheetName); err == nil && idx != -1 {
+			b.File.SetActiveSheet(idx)
 		}
 	}
 	return nil
@@ -97,14 +117,22 @@ func (b *ExportBuilder[T]) Write(w io.Writer) error {
 }
 
 func (b *ExportBuilder[T]) Download(w http.ResponseWriter, filename string, headers ...http.Header) error {
+
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
-	w.Header().Set("Content-Transfer-Encoding", "binary")
+
+	// ✅ 只用这一句（现代浏览器完全够用）
+	encoded := url.PathEscape(filename)
+
+	w.Header().Set("Content-Disposition",
+		"attachment; filename=\""+filename+"\"; filename*=UTF-8''"+encoded)
 	w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
 
+	// 合并自定义 header（避免覆盖）
 	for _, h := range headers {
 		for k, v := range h {
-			w.Header()[k] = v
+			for _, vv := range v {
+				w.Header().Add(k, vv)
+			}
 		}
 	}
 
