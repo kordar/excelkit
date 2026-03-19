@@ -100,7 +100,7 @@ func TableHeaderDarkStyle() *Style {
 	return &Style{
 		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
 		Fill:      &excelize.Fill{Type: "pattern", Color: []string{"333333"}, Pattern: 1},
-		Border:    borderThin("333333"),
+		Border:    borderThin("1F1F1F"),
 		Alignment: alignCenterWrap(),
 	}
 }
@@ -160,9 +160,9 @@ func borderThin(color string) []excelize.Border {
 }
 
 func alignCenterWrap() *excelize.Alignment {
-	return &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: true}
+	return &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: false}
 }
 
 func alignLeftWrap() *excelize.Alignment {
-	return &excelize.Alignment{Horizontal: "left", Vertical: "center", WrapText: true}
+	return &excelize.Alignment{Horizontal: "left", Vertical: "center", WrapText: false}
 }
