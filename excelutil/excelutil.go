@@ -248,6 +248,67 @@ func OutputMapDataForStruct[T any](data any, name string, filename string, w htt
 	return OutputMapDataForStructWithStyles[T](data, name, filename, w, excelkit.TableHeaderBlueStyle(), excelkit.TableBodyBlueStyle(), customCols...)
 }
 
+func OutputMapDataForStructWithTitleSubtitle[T any](
+	data any,
+	name string,
+	title string,
+	subtitle string,
+	filename string,
+	w http.ResponseWriter,
+	customCols ...Column,
+) error {
+	return OutputMapDataForStructWithTitleSubtitleAndStyles[T](
+		data,
+		name,
+		title,
+		subtitle,
+		filename,
+		w,
+		nil,
+		nil,
+		excelkit.TableHeaderBlueStyle(),
+		excelkit.TableBodyBlueStyle(),
+		customCols...,
+	)
+}
+
+func OutputMapDataForStructWithTitleSubtitleAndStyles[T any](
+	data any,
+	name string,
+	title string,
+	subtitle string,
+	filename string,
+	w http.ResponseWriter,
+	titleStyle *excelkit.Style,
+	subtitleStyle *excelkit.Style,
+	headerStyle *excelkit.Style,
+	bodyStyle *excelkit.Style,
+	customCols ...Column,
+) error {
+	rows, ok := toMapSlice(data)
+	if !ok {
+		return &excelkitError{Message: "data must be a slice of map[string]any"}
+	}
+
+	builder := excelkit.New[map[string]any]().
+		FromSlice(rows).
+		UseStream()
+
+	sheet := builder.Sheet(name).
+		Title(title).
+		Subtitle(subtitle).
+		TitleStyle(titleStyle).
+		SubtitleStyle(subtitleStyle).
+		HeaderStyle(headerStyle).
+		SheetDefaultStyle(bodyStyle)
+
+	ApplyColumns[T](sheet, customCols...)
+
+	return sheet.
+		EndSheet().
+		Download(w, filename)
+}
+
 func OutputMapDataForStructWithStyles[T any](
 	data any,
 	name string,
