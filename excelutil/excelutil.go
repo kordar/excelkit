@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/kordar/excelkit"
 )
@@ -15,7 +17,10 @@ type Column struct {
 	Key    string
 	Ignore bool
 	Value  func(map[string]any) any // ⭐ 新增
+	Order  int                      // 排序优先级，可选
 }
+
+var parseColumnsCache sync.Map
 
 // ParseColumns 从 struct 解析出 Column 定义
 func ParseColumns[T any]() []Column {
@@ -26,11 +31,21 @@ func ParseColumns[T any]() []Column {
 		typ = typ.Elem()
 	}
 
-	var cols []Column
-
 	if typ.Kind() != reflect.Struct {
-		return cols
+		return nil
 	}
+
+	// 缓存读取
+	cacheKey := typ.String()
+	if cached, ok := parseColumnsCache.Load(cacheKey); ok {
+		// 返回一个副本，防止外部修改缓存的切片
+		cols := cached.([]Column)
+		res := make([]Column, len(cols))
+		copy(res, cols)
+		return res
+	}
+
+	var cols []Column
 
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
@@ -47,7 +62,7 @@ func ParseColumns[T any]() []Column {
 		}
 
 		ignore := false
-		if excelTag == "" || excelTag == "-" {
+		if excelTag == "-" {
 			ignore = true
 		}
 
@@ -60,22 +75,99 @@ func ParseColumns[T any]() []Column {
 		}
 
 		header := excelTag
-		if header == "" {
+		if header == "" || header == "-" {
 			header = f.Name
 		}
 
 		key := jsonKey
+		k := key // 修复闭包变量捕获问题
 		cols = append(cols, Column{
 			Header: header,
-			Key:    key,
+			Key:    k,
 			Ignore: ignore,
 			Value: func(m map[string]any) any {
-				return m[key]
+				return GetNestedValue(m, k)
 			},
 		})
 	}
 
-	return cols
+	parseColumnsCache.Store(cacheKey, cols)
+
+	// 返回一个副本
+	res := make([]Column, len(cols))
+	copy(res, cols)
+	return res
+}
+
+// ColumnBuilder 提供流式 API 来构建 Column
+type ColumnBuilder struct {
+	col Column
+}
+
+// Col 初始化一个 ColumnBuilder
+func Col(key string) *ColumnBuilder {
+	return &ColumnBuilder{
+		col: Column{Key: key},
+	}
+}
+
+// Header 设置表头
+func (b *ColumnBuilder) Header(header string) *ColumnBuilder {
+	b.col.Header = header
+	return b
+}
+
+// Format 设置格式化函数
+func (b *ColumnBuilder) Format(fn func(map[string]any) any) *ColumnBuilder {
+	b.col.Value = fn
+	return b
+}
+
+// Ignore 设置是否忽略该列
+func (b *ColumnBuilder) Ignore(ignore bool) *ColumnBuilder {
+	b.col.Ignore = ignore
+	return b
+}
+
+// Order 设置列的排序优先级
+func (b *ColumnBuilder) Order(order int) *ColumnBuilder {
+	b.col.Order = order
+	return b
+}
+
+// Build 最终返回构建好的 Column
+func (b *ColumnBuilder) Build() Column {
+	return b.col
+}
+
+// GetNestedValue supports dot-separated nested fields, e.g. "user.name"
+func GetNestedValue(m map[string]any, path string) any {
+	if path == "" {
+		return nil
+	}
+
+	// Fast path for non-nested keys
+	if !strings.Contains(path, ".") {
+		return m[path]
+	}
+
+	parts := strings.Split(path, ".")
+	var current any = m
+
+	for _, part := range parts {
+		if current == nil {
+			return nil
+		}
+
+		switch v := current.(type) {
+		case map[string]any:
+			current = v[part]
+		default:
+			return nil
+		}
+	}
+
+	return current
 }
 
 func MergeColumns(defaultCols, customCols []Column) []Column {
@@ -109,6 +201,11 @@ func MergeColumns(defaultCols, customCols []Column) []Column {
 			result = append(result, col)
 		}
 	}
+
+	// 按照 Order 排序，如果 Order 相同则保持原有顺序
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i].Order < result[j].Order
+	})
 
 	return result
 }

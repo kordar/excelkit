@@ -14,6 +14,8 @@ type ExcelWriter[T any] struct {
 	sw             *excelize.StreamWriter
 	headerStyleID  int
 	defaultStyleID int
+	titleStyleID   int
+	subStyleID     int
 }
 
 func (w *ExcelWriter[T]) Write() error {
@@ -49,6 +51,123 @@ func (w *ExcelWriter[T]) Write() error {
 		w.defaultStyleID = sid
 	}
 
+	if w.Schema.Title != "" {
+		style := w.Schema.TitleStyle
+		if style == nil {
+			style = &Style{
+				Font:      &excelize.Font{Bold: true, Color: "000000", Size: 16},
+				Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: false},
+			}
+		}
+		sid, err := style.Build(f)
+		if err != nil {
+			return err
+		}
+		w.titleStyleID = sid
+	}
+	if w.Schema.Subtitle != "" {
+		style := w.Schema.SubtitleStyle
+		if style == nil {
+			style = &Style{
+				Font:      &excelize.Font{Color: "000000", Size: 11},
+				Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center", WrapText: false},
+			}
+		}
+		sid, err := style.Build(f)
+		if err != nil {
+			return err
+		}
+		w.subStyleID = sid
+	}
+
+	headerRow := 1
+	if w.Schema.Title != "" {
+		headerRow++
+	}
+	if w.Schema.Subtitle != "" {
+		headerRow++
+	}
+
+	if w.Schema.Title != "" {
+		row := make([]interface{}, len(w.Schema.Columns))
+		for i := range row {
+			if w.titleStyleID > 0 {
+				if i == 0 {
+					row[i] = excelize.Cell{Value: w.Schema.Title, StyleID: w.titleStyleID}
+				} else {
+					row[i] = excelize.Cell{Value: "", StyleID: w.titleStyleID}
+				}
+			} else {
+				if i == 0 {
+					row[i] = w.Schema.Title
+				} else {
+					row[i] = ""
+				}
+			}
+		}
+		startCell, _ := excelize.CoordinatesToCellName(1, 1)
+		endCell, _ := excelize.CoordinatesToCellName(len(w.Schema.Columns), 1)
+		if w.UseStream {
+			_ = w.sw.SetRow(startCell, row)
+			_ = w.sw.MergeCell(startCell, endCell)
+		} else {
+			for i := range row {
+				cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+				if i == 0 {
+					f.SetCellValue(sheet, cell, w.Schema.Title)
+				} else {
+					f.SetCellValue(sheet, cell, "")
+				}
+				if w.titleStyleID > 0 {
+					f.SetCellStyle(sheet, cell, cell, w.titleStyleID)
+				}
+			}
+			_ = f.MergeCell(sheet, startCell, endCell)
+		}
+	}
+
+	if w.Schema.Subtitle != "" {
+		rowNum := 1
+		if w.Schema.Title != "" {
+			rowNum = 2
+		}
+		row := make([]interface{}, len(w.Schema.Columns))
+		for i := range row {
+			if w.subStyleID > 0 {
+				if i == 0 {
+					row[i] = excelize.Cell{Value: w.Schema.Subtitle, StyleID: w.subStyleID}
+				} else {
+					row[i] = excelize.Cell{Value: "", StyleID: w.subStyleID}
+				}
+			} else {
+				if i == 0 {
+					row[i] = w.Schema.Subtitle
+				} else {
+					row[i] = ""
+				}
+			}
+		}
+		startCell, _ := excelize.CoordinatesToCellName(1, rowNum)
+		endCell, _ := excelize.CoordinatesToCellName(len(w.Schema.Columns), rowNum)
+		if w.UseStream {
+			_ = w.sw.SetRow(startCell, row)
+			_ = w.sw.MergeCell(startCell, endCell)
+		} else {
+			for i := range row {
+				cell, _ := excelize.CoordinatesToCellName(i+1, rowNum)
+				if i == 0 {
+					f.SetCellValue(sheet, cell, w.Schema.Subtitle)
+				} else {
+					f.SetCellValue(sheet, cell, "")
+				}
+				if w.subStyleID > 0 {
+					f.SetCellStyle(sheet, cell, cell, w.subStyleID)
+				}
+			}
+			_ = f.MergeCell(sheet, startCell, endCell)
+		}
+	}
+
 	// 写 header
 	header := make([]interface{}, len(w.Schema.Columns))
 	for i, col := range w.Schema.Columns {
@@ -59,10 +178,11 @@ func (w *ExcelWriter[T]) Write() error {
 		}
 	}
 	if w.UseStream {
-		_ = w.sw.SetRow("A1", header)
+		cell, _ := excelize.CoordinatesToCellName(1, headerRow)
+		_ = w.sw.SetRow(cell, header)
 	} else {
 		for i, val := range header {
-			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+			cell, _ := excelize.CoordinatesToCellName(i+1, headerRow)
 			f.SetCellValue(sheet, cell, val)
 			if w.headerStyleID > 0 {
 				f.SetCellStyle(sheet, cell, cell, w.headerStyleID)
@@ -70,7 +190,7 @@ func (w *ExcelWriter[T]) Write() error {
 		}
 	}
 
-	rowIdx := 2
+	rowIdx := headerRow + 1
 	for {
 		row, ok, err := w.Source.Next()
 		if err != nil || !ok {

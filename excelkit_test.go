@@ -53,7 +53,9 @@ func TestExport(t *testing.T) {
 		FromSlice(users).
 		UseStream()
 
-	sheet := b.Sheet("用户表")
+	sheet := b.Sheet("用户表").
+		Title("用户表").
+		Subtitle("导出示例（标题居中，副标题左对齐）")
 	sheet.Column("ID").Value(func(u User) any {
 		if u.IsSummary {
 			return "小结"
@@ -177,7 +179,7 @@ func TestExport(t *testing.T) {
 	summaryCount := (len(users) - 1) / 10
 	expected := map[string]bool{}
 	for k := 1; k <= summaryCount; k++ {
-		startRow := 12 * k
+		startRow := 12*k + 2
 		expected[fmt.Sprintf("B%d:E%d", startRow, startRow)] = false
 		expected[fmt.Sprintf("B%d:E%d", startRow+1, startRow+1)] = false
 	}
@@ -193,12 +195,12 @@ func TestExport(t *testing.T) {
 		}
 	}
 
-	name11, err := f.GetCellValue("用户表", "B14")
+	name11, err := f.GetCellValue("用户表", "B16")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if name11 != "用户11" {
-		t.Fatalf("unexpected B14 value: %q", name11)
+		t.Fatalf("unexpected B16 value: %q", name11)
 	}
 
 	t.Log("导出成功: users_final_advanced.xlsx")
@@ -326,5 +328,68 @@ func TestHeaderAndDefaultStyle(t *testing.T) {
 	}
 	if dB2 == dA2 {
 		t.Fatalf("expected column override style differs from default: A2=%d B2=%d", dA2, dB2)
+	}
+}
+
+func TestTitleSubtitleStyle(t *testing.T) {
+	rows := []User{{ID: 1, Name: "A"}}
+
+	buf := &bytes.Buffer{}
+	b := New[User]().FromSlice(rows).UseStream()
+	b.Sheet("S").
+		Title("T").
+		TitleStyle(TableHeaderDarkStyle()).
+		Subtitle("Sub").
+		SubtitleStyle(TableHeaderLightStyle()).
+		HeaderStyle(BorderedHeaderStyle()).
+		Column("ID").Value(func(u User) any { return u.ID }).End().
+		Column("姓名").Value(func(u User) any { return u.Name }).End().
+		EndSheet()
+
+	if err := b.Write(buf); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := excelize.OpenReader(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	tA1, err := f.GetCellStyle("S", "A1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tB1, err := f.GetCellStyle("S", "B1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sA2, err := f.GetCellStyle("S", "A2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sB2, err := f.GetCellStyle("S", "B2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hA3, err := f.GetCellStyle("S", "A3")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if tA1 == 0 || tA1 != tB1 {
+		t.Fatalf("unexpected title style ids: A1=%d B1=%d", tA1, tB1)
+	}
+	if sA2 == 0 || sA2 != sB2 {
+		t.Fatalf("unexpected subtitle style ids: A2=%d B2=%d", sA2, sB2)
+	}
+	if tA1 == sA2 {
+		t.Fatalf("expected different style ids for title/subtitle: title=%d subtitle=%d", tA1, sA2)
+	}
+	if hA3 == 0 {
+		t.Fatalf("unexpected header style id: %d", hA3)
+	}
+	if hA3 == tA1 || hA3 == sA2 {
+		t.Fatalf("expected header style differs from title/subtitle: header=%d title=%d subtitle=%d", hA3, tA1, sA2)
 	}
 }

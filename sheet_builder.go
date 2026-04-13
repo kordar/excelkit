@@ -4,11 +4,15 @@ package excelkit
 // SheetBuilder / ColumnBuilder
 // --------------------
 type SheetBuilder[T any] struct {
-	parent       *ExportBuilder[T]
-	name         string
-	columns      []*ColumnBuilder[T]
-	headerStyle  *Style
-	defaultStyle *Style
+	parent        *ExportBuilder[T]
+	name          string
+	columns       []*ColumnBuilder[T]
+	title         string
+	subtitle      string
+	titleStyle    *Style
+	subtitleStyle *Style
+	headerStyle   *Style
+	defaultStyle  *Style
 }
 
 func (s *SheetBuilder[T]) Column(header string) *ColumnBuilder[T] {
@@ -27,6 +31,26 @@ func (s *SheetBuilder[T]) SheetDefaultStyle(style *Style) *SheetBuilder[T] {
 	return s
 }
 
+func (s *SheetBuilder[T]) Title(text string) *SheetBuilder[T] {
+	s.title = text
+	return s
+}
+
+func (s *SheetBuilder[T]) Subtitle(text string) *SheetBuilder[T] {
+	s.subtitle = text
+	return s
+}
+
+func (s *SheetBuilder[T]) TitleStyle(style *Style) *SheetBuilder[T] {
+	s.titleStyle = style
+	return s
+}
+
+func (s *SheetBuilder[T]) SubtitleStyle(style *Style) *SheetBuilder[T] {
+	s.subtitleStyle = style
+	return s
+}
+
 func (s *SheetBuilder[T]) EndSheet() *ExportBuilder[T] { return s.parent }
 
 func (s *SheetBuilder[T]) ToSchema() SheetSchema[T] {
@@ -41,10 +65,14 @@ func (s *SheetBuilder[T]) ToSchema() SheetSchema[T] {
 		})
 	}
 	return SheetSchema[T]{
-		Name:         s.name,
-		Columns:      cols,
-		HeaderStyle:  s.headerStyle,
-		DefaultStyle: s.defaultStyle,
+		Name:          s.name,
+		Columns:       cols,
+		Title:         s.title,
+		Subtitle:      s.subtitle,
+		TitleStyle:    s.titleStyle,
+		SubtitleStyle: s.subtitleStyle,
+		HeaderStyle:   s.headerStyle,
+		DefaultStyle:  s.defaultStyle,
 	}
 }
 

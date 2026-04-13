@@ -282,6 +282,90 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 - `Write(io.Writer)`: 将 Excel 内容写入任意 Writer。
 - `Download(http.ResponseWriter, filename, ...headers)`: 辅助方法，设置下载响应头并写入 ResponseWriter，支持自定义 Header。
 
+## excelutil 使用
+
+`excelutil` 适用于数据源是 `[]map[string]any`（例如 DB/JSON 查询结果）的场景：用结构体 tag 描述列（`json` 作为 key，`excel` 作为表头），再把 map 数据快速导出为 Excel。
+
+### 1) 基础用法（HTTP 下载）
+
+```go
+type UserRow struct {
+	ID   int64  `json:"id" excel:"ID"`
+	Name string `json:"name" excel:"姓名"`
+}
+
+func DownloadHandler(w http.ResponseWriter, r *http.Request) error {
+	rows := []map[string]any{
+		{"id": 1, "name": "Alice"},
+		{"id": 2, "name": "Bob"},
+	}
+
+	return excelutil.OutputMapDataForStruct[UserRow](rows, "用户表", "users.xlsx", w)
+}
+```
+
+### 2) 字段自定义 / 替换（覆盖表头、格式化、虚拟列、排序）
+
+```go
+type UserRow struct {
+	ID   int64  `json:"id" excel:"ID"`
+	Name string `json:"name" excel:"姓名"`
+}
+
+func DownloadHandler(w http.ResponseWriter, r *http.Request) error {
+	rows := []map[string]any{
+		{"id": 1, "name": "Alice"},
+		{"id": 2, "name": "Bob"},
+	}
+
+	idx := 0
+	return excelutil.OutputMapDataForStructWithStyles[UserRow](
+		rows,
+		"用户表",
+		"users.xlsx",
+		w,
+		excelkit.TableHeaderBlueStyle(),
+		excelkit.TableBodyBlueStyle(),
+		excelutil.Col("_index").Header("序号").Order(-1).Format(func(m map[string]any) any {
+			idx++
+			return idx
+		}).Build(),
+		excelutil.Col("name").Header("姓名(脱敏)").Format(func(m map[string]any) any {
+			v, _ := m["name"].(string)
+			if v == "" {
+				return ""
+			}
+			return v[:1] + "**"
+		}).Build(),
+	)
+}
+```
+
+### 3) 嵌套字段 key（例如 user.profile.name）
+
+`excelutil` 支持 `Key: "a.b.c"` 的点路径取值（map 内层也需要是 `map[string]any`）：
+
+```go
+type UserRow struct {
+	ID int64 `json:"id" excel:"ID"`
+}
+
+func DownloadHandler(w http.ResponseWriter, r *http.Request) error {
+	rows := []map[string]any{
+		{"id": 1, "user": map[string]any{"profile": map[string]any{"name": "Alice"}}},
+		{"id": 2, "user": map[string]any{"profile": map[string]any{"name": "Bob"}}},
+	}
+
+	return excelutil.OutputMapDataForStruct[UserRow](
+		rows,
+		"用户表",
+		"users.xlsx",
+		w,
+		excelutil.Col("user.profile.name").Header("姓名").Build(),
+	)
+}
+```
+
 ## License
 
 MIT
